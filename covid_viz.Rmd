@@ -220,7 +220,3 @@ anim_save(filename=glue("~/Documents/covid_proj/covid_county_fill_reds_fps_{fps}
 anim
 ```
 
-```{r}
-
-```
-
