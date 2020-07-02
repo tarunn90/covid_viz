@@ -9,3 +9,5 @@ The notebook *covid_viz.Rmd* shows how to make an **animated chloropleth** of U.
 ## Helpful resources
 - Graphing chloropleths in R: [Data Visualization](https://socviz.co/maps.html)
 - Making animated graphs in R: [gganimate package](https://gganimate.com/articles/gganimate.html)
+
+![](covid_county_fill_reds_fps_5.gif)
