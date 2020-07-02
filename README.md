@@ -1,6 +1,6 @@
 # Animated visualization of U.S. covid data
 
-The notebook *covid_viz.Rmd* shows how to make an **animated chloropleth** of U.S. county-level confirmed covid cases (included in this repo). 
+The notebook *covid_viz.Rmd* shows how to make an **animated chloropleth** of U.S. county-level confirmed covid cases. All necessary data is included in this repo and necessary R package dependencies are listed in the notebook. 
 
 ## Data sources
 - [Johns Hopkins' CSSE COVID data](https://github.com/CSSEGISandData/COVID-19) 

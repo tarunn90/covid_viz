@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "COVID animated visualization"
 output: html_document
 ---
 
@@ -12,7 +12,7 @@ Johns Hopkins CSSE's COVID-19 Data Repository
 https://github.com/CSSEGISandData/COVID-19
 
 
-# Load libraries
+# Define useful parameters and functions, load libraries
 ```{r message=FALSE, warning=FALSE}
 library(tidyverse)
 library(data.table)
@@ -45,11 +45,14 @@ theme_map <- function(base_size=9, base_family="") {
               legend.position = c(0,0)
               )
 }
+
+homepath <- "~/Documents/covid_proj/" # pathname of git repo
+fps <- 5 # desired frames per second (i.e. days per second) for gif
 ```
 
 # Ingest covid data
 ```{r}
-covid <- fread("~/Documents/covid_proj/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+covid <- fread(glue("{homepath}COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv"))
 
 # Filter to 50 states plus DC
 covid <- covid[iso2 == "US"]
@@ -121,7 +124,7 @@ covid_county_1_day <- covid_county_1_day[, .(FIPS, num_cases)]
 
 
 ```{r}
-us_counties <- readOGR(dsn="~/Documents/covid_proj/gz_2010_us_050_00_5m.json")
+us_counties <- readOGR(dsn=glue("{homepath}gz_2010_us_050_00_5m.json"))
 
 us_counties_aea <- spTransform(us_counties,
                     CRS("+proj=laea +lat_0=45 +lon_0=-100 \
@@ -149,7 +152,7 @@ p <- ggplot(data = county_map_covid,
                           group = group))
 
 p + geom_polygon(color = "gray90", size = 0.1) + coord_equal() +
-  scale_fill_brewer(palette = "Blues",
+  scale_fill_brewer(palette = "Reds",
                     labels = c("0-10", "10-100", "100-1,000", 
                                "1,000-10,000", "10,000-100,000", "100,000-1,000,000")) +
   labs(title = "Number of SARS-COV-2 cases by county, 6/24/20", fill = NULL) +
@@ -158,18 +161,9 @@ p + geom_polygon(color = "gray90", size = 0.1) + coord_equal() +
   theme(legend.position = "bottom", 
         plot.title = element_text(hjust = 0.5))
 
-# p + geom_polygon(color = "gray90", size = 0.1) + coord_equal() +
-#   scale_fill_viridis(discrete = TRUE, 
-#                      labels = c("0-10", "10-100", "100-1,000", "1,000-10,000", 
-#                                "10,000-100,000", "100,000 - 1,000,000")) +
-#   labs(title = "Number of SARS-COV-2 cases by county, 6/24/20", fill = NULL) +
-#   theme_map() +
-#   guides(fill = guide_legend(nrow = 1)) +
-#   theme(legend.position = "bottom")
-
 ```
 
-# Graph time series of chloropleth maps at county-level
+# Graph animated chloropleth maps at county-level
 ```{r}
 covid_county <- covid[!(Province_State %in% c("Alaska", "Hawaii"))]
 
@@ -192,8 +186,7 @@ county_map_long_covid[, cases_bins := cut(num_cases, bin_seq, include.lowest = T
 ```
 
 ```{r}
-min_date <- county_map_long_covid[, min(date)]
-# min_date <- "2020-06-20"
+min_date <- county_map_long_covid[, min(date)] # these are configurable: can use e.g. 2020-06-20
 max_date <- county_map_long_covid[, max(date)]
 
 county_map_covid_time_filt <- county_map_long_covid[date >= min_date & date <= max_date,]
@@ -204,7 +197,7 @@ p <- ggplot(data = county_map_covid_time_filt,
   geom_polygon(color = "gray90", size = 0.1) + coord_equal() + 
   scale_fill_brewer(palette = "Reds",
                     labels = c("0-10", "10-100", "100-1,000", 
-                               "1,000-10,000", "10,000-100,000", "100,000 - 1,000,000")) +
+                               "1,000-10,000", "10,000-100,000", "100,000-1,000,000")) +
   labs(title = glue("U.S. SARS-COV-2 cases by county"),
        subtitle = glue("{min_date} through {max_date}"),
        fill = NULL) + 
@@ -214,9 +207,8 @@ p <- ggplot(data = county_map_covid_time_filt,
         plot.title = element_text(hjust = 0.5), 
         plot.subtitle = element_text(hjust = 0.5)) + 
   transition_manual(date)
-fps <- 5
 anim <- animate(p, fps = fps)
-anim_save(filename=glue("~/Documents/covid_proj/covid_county_fill_reds_fps_{fps}.gif"))
+anim_save(filename=glue("{homepath}covid_county_fill_reds_fps_{fps}.gif"))
 anim
 ```
 
