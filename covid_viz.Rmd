@@ -1,0 +1,226 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Source data
+Johns Hopkins CSSE's COVID-19 Data Repository
+https://github.com/CSSEGISandData/COVID-19
+
+
+# Load libraries
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(data.table)
+library(RColorBrewer)
+library(viridis)
+library(maps)
+library(testthat)
+library(gganimate)
+library(glue)
+library(maptools)
+library(mapproj)
+library(rgeos)
+library(rgdal)
+library(broom)
+
+
+theme_map <- function(base_size=9, base_family="") {
+    require(grid)
+    theme_bw(base_size=base_size, base_family=base_family) %+replace%
+        theme(axis.line=element_blank(),
+              axis.text=element_blank(),
+              axis.ticks=element_blank(),
+              axis.title=element_blank(),
+              panel.background=element_blank(),
+              panel.border=element_blank(),
+              panel.grid=element_blank(),
+              panel.spacing=unit(0, "lines"),
+              plot.background=element_blank(),
+              legend.justification = c(0,0),
+              legend.position = c(0,0)
+              )
+}
+```
+
+# Ingest covid data
+```{r}
+covid <- fread("~/Documents/covid_proj/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+
+# Filter to 50 states plus DC
+covid <- covid[iso2 == "US"]
+covid <- covid[!(Province_State %in% c("Diamond Princess", "Grand Princess"))]
+stopifnot(length(unique(covid$Province_State)) == 51)
+```
+
+# Graph one day of covid cases at state-level
+```{r eval=FALSE}
+## Aggregate covid data by state
+covid_1_day <- copy(covid)
+setnames(covid_1_day, "6/24/20", "count_20_06_24")
+covid_1_day[, sum(count_20_06_24)]
+
+covid_1_day_agg <- covid_1_day[, .(num_cases = sum(count_20_06_24)), by = Province_State]
+```
+
+```{r eval=FALSE}
+## Plot blank state-level map
+us_states <- map_data("state")
+head(us_states)
+```
+
+```{r eval=FALSE}
+p <- ggplot(data = us_states,
+            mapping = aes(x = long, y = lat,
+                          group = group))
+
+p + geom_polygon(fill = "white", color = "black") + 
+  theme_map() +
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45)
+```
+
+```{r eval=FALSE}
+# Drop Alaksa and Hawaii from covid data 
+covid_fixed_names <- covid_1_day_agg[!(Province_State %in% c("Alaska", "Hawaii"))]
+
+# Make the names lowercase
+covid_fixed_names[, Province_State := tolower(Province_State)]
+
+# Check that the names line up
+expect_setequal(unique(covid_fixed_names$Province_State), unique(us_states$region))
+
+# Merge on
+us_states_covid <- merge(us_states, covid_fixed_names, by.x = "region", by.y = "Province_State")
+```
+
+```{r eval=FALSE}
+p <- ggplot(data = us_states_covid,
+            mapping = aes(x = long, 
+                          y = lat,
+                          group = group, 
+                          fill = num_cases))
+
+p + geom_polygon(color = "gray90", size = 0.1) + 
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45) + 
+  scale_fill_viridis() + 
+  labs(title = "Number of SARS-COV-2 cases by state", fill = NULL) + 
+  theme_map()
+```
+
+
+# Graph one day of covid cases at county-level
+```{r}
+covid_county_1_day <- covid[!(Province_State %in% c("Alaska", "Hawaii"))]
+setnames(covid_county_1_day, "6/24/20", "num_cases")
+covid_county_1_day <- covid_county_1_day[, .(FIPS, num_cases)]
+```
+
+
+```{r}
+us_counties <- readOGR(dsn="~/Documents/covid_proj/gz_2010_us_050_00_5m.json")
+
+us_counties_aea <- spTransform(us_counties,
+                    CRS("+proj=laea +lat_0=45 +lon_0=-100 \
+                         +x_0=0 +y_0=0 +a=6370997 +b=6370997 \
+                         +units=m +no_defs"))
+
+us_counties_aea@data$id <- rownames(us_counties_aea@data)
+
+county_map <- tidy(us_counties_aea, region = "GEO_ID")
+county_map$id <- stringr::str_replace(county_map$id,
+                                      pattern = "0500000US", replacement = "")
+setDT(county_map)
+county_map[, id := as.integer(id)]
+```
+
+```{r}
+county_map_covid <- merge(county_map, covid_county_1_day, by.x = "id", by.y = "FIPS")
+
+bin_seq <- c(0, 10^(seq(1, 6, by = 1)))
+county_map_covid[, cases_bins := cut(num_cases, bin_seq, include.lowest = TRUE)]
+
+p <- ggplot(data = county_map_covid,
+            mapping = aes(x = long, y = lat,
+                          fill = cases_bins,
+                          group = group))
+
+p + geom_polygon(color = "gray90", size = 0.1) + coord_equal() +
+  scale_fill_brewer(palette = "Blues",
+                    labels = c("0-10", "10-100", "100-1,000", 
+                               "1,000-10,000", "10,000-100,000", "100,000-1,000,000")) +
+  labs(title = "Number of SARS-COV-2 cases by county, 6/24/20", fill = NULL) +
+  theme_map() +
+  guides(fill = guide_legend(nrow = 1)) +
+  theme(legend.position = "bottom", 
+        plot.title = element_text(hjust = 0.5))
+
+# p + geom_polygon(color = "gray90", size = 0.1) + coord_equal() +
+#   scale_fill_viridis(discrete = TRUE, 
+#                      labels = c("0-10", "10-100", "100-1,000", "1,000-10,000", 
+#                                "10,000-100,000", "100,000 - 1,000,000")) +
+#   labs(title = "Number of SARS-COV-2 cases by county, 6/24/20", fill = NULL) +
+#   theme_map() +
+#   guides(fill = guide_legend(nrow = 1)) +
+#   theme(legend.position = "bottom")
+
+```
+
+# Graph time series of chloropleth maps at county-level
+```{r}
+covid_county <- covid[!(Province_State %in% c("Alaska", "Hawaii"))]
+
+# Melt from wide to long
+date_cols <- grep("[0-9]+/[0-9]+/20", colnames(covid_county), value = TRUE)
+covid_county_long <- melt(covid_county, 
+                          id.vars = "FIPS", 
+                          measure.vars = date_cols,
+                          variable.name = "date", 
+                          value.name = "num_cases")
+
+county_map_long_covid <- merge.data.table(county_map, covid_county_long, 
+                                          by.x = "id", by.y = "FIPS",
+                                          allow.cartesian = TRUE)
+setorder(county_map_long_covid, date, group)
+set(county_map_long_covid, j = "date", value = as.Date(county_map_long_covid$date, tryFormats = "%m/%d/%y"))
+
+bin_seq <- c(0, 10^(seq(1, 6, by = 1)))
+county_map_long_covid[, cases_bins := cut(num_cases, bin_seq, include.lowest = TRUE)]
+```
+
+```{r}
+min_date <- county_map_long_covid[, min(date)]
+# min_date <- "2020-06-20"
+max_date <- county_map_long_covid[, max(date)]
+
+county_map_covid_time_filt <- county_map_long_covid[date >= min_date & date <= max_date,]
+p <- ggplot(data = county_map_covid_time_filt,
+            mapping = aes(x = long, y = lat,
+                          fill = cases_bins,
+                          group = group)) + 
+  geom_polygon(color = "gray90", size = 0.1) + coord_equal() + 
+  scale_fill_brewer(palette = "Reds",
+                    labels = c("0-10", "10-100", "100-1,000", 
+                               "1,000-10,000", "10,000-100,000", "100,000 - 1,000,000")) +
+  labs(title = glue("U.S. SARS-COV-2 cases by county"),
+       subtitle = glue("{min_date} through {max_date}"),
+       fill = NULL) + 
+  theme_map() +
+  guides(fill = guide_legend(nrow = 1)) +
+  theme(legend.position = "bottom", 
+        plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5)) + 
+  transition_manual(date)
+fps <- 5
+anim <- animate(p, fps = fps)
+anim_save(filename=glue("~/Documents/covid_proj/covid_county_fill_reds_fps_{fps}.gif"))
+anim
+```
+
+```{r}
+
+```
+
